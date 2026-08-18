@@ -33,6 +33,21 @@ export default function Register({ onNavigate }) {
         )}
 
         <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="reg-email">Correo Electrónico</label>
+            <input
+              type="email"
+              id="reg-email"
+              name="email"
+              className="form-input"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Ej: juan@correo.com"
+              disabled={isLoading}
+              autoComplete="email"
+            />
+          </div>
+
           <div className="form-grid-2">
             <div className="form-group">
               <label htmlFor="reg-name">Nombre</label>
@@ -77,21 +92,6 @@ export default function Register({ onNavigate }) {
               placeholder="Ej: juan_perez"
               disabled={isLoading}
               autoComplete="username"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="reg-email">Correo Electrónico</label>
-            <input
-              type="email"
-              id="reg-email"
-              name="email"
-              className="form-input"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Ej: juan@correo.com"
-              disabled={isLoading}
-              autoComplete="email"
             />
           </div>
 
