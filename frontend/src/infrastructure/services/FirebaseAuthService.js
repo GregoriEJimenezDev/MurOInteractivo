@@ -1,10 +1,20 @@
 import { IAuthService } from '../../domain/services/IAuthService.js';
 import { auth } from '../../config/firebase.js';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import axios from 'axios';
 import { User } from '../../domain/entities/User.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+const userFromFirebase = (firebaseUser, username) => {
+  const [name = 'Usuario', ...lastName] = (firebaseUser.displayName || '').split(' ').filter(Boolean);
+  return new User({
+    uid: firebaseUser.uid,
+    username: username || firebaseUser.email?.split('@')[0] || '',
+    name,
+    lastname: lastName.join(' ')
+  });
+};
 
 /**
  * Concrete implementation of AuthService using Firebase Client SDK and Backend API.
@@ -12,13 +22,24 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
  */
 export class FirebaseAuthService extends IAuthService {
   async register(username, password, name, lastname) {
-    const response = await axios.post(`${API_URL}/auth/register`, {
-      username: username.trim().toLowerCase(),
-      password,
-      name,
-      lastname
-    });
-    return response.data;
+    const normalizedUsername = username.trim().toLowerCase();
+    try {
+      const response = await axios.post(`${API_URL}/auth/register`, {
+        username: normalizedUsername,
+        password,
+        name,
+        lastname
+      });
+      return response.data;
+    } catch (error) {
+      if (error.response && error.response.status < 500) throw error;
+      if (!auth) throw error;
+
+      const virtualEmail = `${normalizedUsername}@murointeractivo.local`;
+      const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, password);
+      await updateProfile(userCredential.user, { displayName: `${name} ${lastname}` });
+      return { user: userFromFirebase(userCredential.user, normalizedUsername), mode: 'firebase-only' };
+    }
   }
 
   async login(username, password) {
@@ -34,7 +55,7 @@ export class FirebaseAuthService extends IAuthService {
         return { user: new User(profile), token: mockResponse.data.token };
       }
     } catch (error) {
-      if (error.response?.status !== 404) throw error;
+      if (error.response?.status && error.response.status !== 404 && error.response.status < 500) throw error;
     }
 
     // Map username to the Firebase virtual email when Admin is configured.
@@ -43,16 +64,13 @@ export class FirebaseAuthService extends IAuthService {
     const token = await userCredential.user.getIdToken();
 
     // Load full profile details from MongoDB using Firebase ID token
-    const profileResponse = await axios.get(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    const user = new User({
-      uid: userCredential.user.uid,
-      username: profileResponse.data.username,
-      name: profileResponse.data.name,
-      lastname: profileResponse.data.lastname
-    });
+    let user;
+    try {
+      const profileResponse = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      user = new User({ uid: userCredential.user.uid, username: profileResponse.data.username, name: profileResponse.data.name, lastname: profileResponse.data.lastname });
+    } catch {
+      user = userFromFirebase(userCredential.user, normalizedUsername);
+    }
 
     return { user, token };
   }
@@ -90,15 +108,13 @@ export class FirebaseAuthService extends IAuthService {
       if (firebaseUser) {
         try {
           const token = await firebaseUser.getIdToken();
-          const profileResponse = await axios.get(`${API_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const user = new User({
-            uid: firebaseUser.uid,
-            username: profileResponse.data.username,
-            name: profileResponse.data.name,
-            lastname: profileResponse.data.lastname
-          });
+          let user;
+          try {
+            const profileResponse = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+            user = new User({ uid: firebaseUser.uid, username: profileResponse.data.username, name: profileResponse.data.name, lastname: profileResponse.data.lastname });
+          } catch {
+            user = userFromFirebase(firebaseUser);
+          }
           callback(user, token);
         } catch (error) {
           console.error("Firebase auth state sync error:", error.message);
