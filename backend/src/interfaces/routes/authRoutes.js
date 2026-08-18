@@ -10,6 +10,7 @@ const userRepository = new MongoUserRepository();
 const authController = new AuthController(userRepository);
 
 router.post('/register', authController.register);
+router.post('/login', authController.login);
 router.get('/me', verifyFirebaseToken, authController.getProfile);
 
 export default router;

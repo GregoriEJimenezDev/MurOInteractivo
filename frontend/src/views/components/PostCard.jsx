@@ -1,67 +1,23 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import { User, ShieldAlert, MessageCircle, Heart, Bookmark } from 'lucide-react';
+import { Bookmark, Heart, MessageCircle, ShieldCheck } from 'lucide-react';
 
-/**
- * Post Card Component (View).
- * SOLID Principle: SRP - Handles rendering details, timestamp localized formatting, 
- * and hardware-accelerated 3D spatial tilt transitions.
- */
-export default function PostCard({ post, index = 0 }) {
-  const formattedDate = new Date(post.createdAt).toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+const avatarFor = (post) => post.authorPhotoURL || `https://i.pravatar.cc/96?u=${encodeURIComponent(post.authorUid || post.authorName || 'muro')}`;
 
-  // Evaluate if post has been published by the fallback mock System agent
+export default function PostCard({ post }) {
+  const formattedDate = new Date(post.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
   const isSystem = post.authorName === 'Sistema' || post.authorUid === 'admin';
 
   return (
-    <motion.div
-      whileHover={{ scale: 1.02, rotateX: 2, rotateY: -2, zIndex: 10 }}
-      transition={{ type: "spring", stiffness: 400, damping: 20 }}
-      className={`post-card post-card-${index % 3}`}
-      style={{ transformStyle: 'preserve-3d' }}
-    >
-      {/* Dynamic ambient highlight glow */}
-      <div 
-        className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" 
-      />
-      
-      {/* Card Header */}
-      <div className="post-card-header">
-        <h3>
-          {post.title}
-        </h3>
-        <span className="post-time">
-          {formattedDate}
-        </span>
+    <article className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgb(0,0,0,0.08)] sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <img className="h-10 w-10 rounded-full object-cover shadow-md ring-2 ring-white" src={avatarFor(post)} alt={`Avatar de ${post.authorName}`} />
+          <div className="min-w-0"><p className="truncate text-sm font-bold text-gray-900">{post.authorName}</p><p className="text-xs text-gray-500">{isSystem ? 'Cuenta oficial' : 'Miembro de la comunidad'} · {formattedDate}</p></div>
+        </div>
+        {isSystem && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-600"><ShieldCheck size={12} /> Oficial</span>}
       </div>
-      
-      {/* Card Body */}
-      <p className="post-content">
-        {post.content}
-      </p>
-      
-      {/* Card Footer */}
-      <div className="post-footer">
-        {isSystem ? (
-          <div className="post-avatar system-avatar">
-            <ShieldAlert size={15} />
-          </div>
-        ) : (
-          <div className="post-avatar">
-            <User size={15} />
-          </div>
-        )}
-        <span className="post-author">
-          Publicado por <strong className="text-white">{post.authorName}</strong>
-        </span>
-        <div className="post-actions"><Heart size={15} /><MessageCircle size={15} /><Bookmark size={15} /></div>
-      </div>
-    </motion.div>
+      <div className="mt-5"><h3 className="text-lg font-extrabold tracking-[-0.03em] text-gray-900">{post.title}</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">{post.content}</p></div>
+      <div className="mt-5 flex items-center gap-5 border-t border-gray-100 pt-4 text-gray-400"><button className="inline-flex items-center gap-1.5 text-xs font-semibold transition-colors hover:text-rose-500" aria-label="Me gusta"><Heart size={16} /> <span>Me gusta</span></button><button className="inline-flex items-center gap-1.5 text-xs font-semibold transition-colors hover:text-blue-600" aria-label="Comentar"><MessageCircle size={16} /> <span>Comentar</span></button><button className="ml-auto transition-colors hover:text-gray-900" aria-label="Guardar"><Bookmark size={16} /></button></div>
+    </article>
   );
 }

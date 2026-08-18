@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel.js';
-import Navbar from './components/Navbar.jsx';
+import MainLayout from './components/MainLayout.jsx';
 import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import Help from './pages/Help.jsx';
 
 /**
  * Main App Component (View).
@@ -31,29 +32,21 @@ export default function App() {
         return <Login login={login} onNavigate={setCurrentPage} />;
       case 'register':
         return <Register register={register} onNavigate={setCurrentPage} />;
+      case 'help':
+        return <Help onNavigate={setCurrentPage} />;
       default:
         return <Home user={user} token={token} onNavigate={setCurrentPage} />;
     }
   };
 
   return (
-    <div className="app-container">
-      <Navbar 
+    <MainLayout
         user={user} 
         logout={logout} 
         currentPage={currentPage} 
         onNavigate={setCurrentPage} 
-      />
-      
-      <main className="main-layout">
+      >
         {renderPage()}
-      </main>
-
-      <footer className="main-footer">
-        <div className="container text-center">
-          <p>© 2026 Muro Interactivo. Construido con Clean Architecture, SOLID y React Hooks.</p>
-        </div>
-      </footer>
-    </div>
+    </MainLayout>
   );
 }

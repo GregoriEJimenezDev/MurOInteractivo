@@ -20,6 +20,7 @@ class FirebaseAdmin {
     this.app = null;
     this.auth = null;
     this.isMocked = false;
+    this.mockUsers = new Map();
     FirebaseAdmin.instance = this;
     Object.freeze(this);
   }
@@ -97,11 +98,20 @@ class FirebaseAdmin {
       createUser: async (userProperties) => {
         const username = userProperties.email.split('@')[0];
         console.log(`[MOCK] Created Firebase User for: ${username}`);
+        this.mockUsers.set(username, { ...userProperties, uid: `mock-uid-${username}` });
         return {
           uid: `mock-uid-${username}`,
           email: userProperties.email,
           displayName: userProperties.displayName,
         };
+      },
+      signIn: async (email, password) => {
+        const username = email.split('@')[0];
+        const user = this.mockUsers.get(username);
+        if (!user || user.password !== password) {
+          throw new Error('Invalid username or password.');
+        }
+        return { uid: user.uid, email, token: `mock-token-${username}` };
       }
     };
   }

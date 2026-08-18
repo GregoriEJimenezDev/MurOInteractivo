@@ -13,7 +13,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export class FirebaseAuthService extends IAuthService {
   async register(username, password, name, lastname) {
     const response = await axios.post(`${API_URL}/auth/register`, {
-      username,
+      username: username.trim().toLowerCase(),
       password,
       name,
       lastname
@@ -26,8 +26,19 @@ export class FirebaseAuthService extends IAuthService {
       throw new Error('Firebase Authentication is not configured.');
     }
 
-    // Map username to the backend-simulated virtual email
-    const virtualEmail = `${username.toLowerCase()}@murointeractivo.local`;
+    const normalizedUsername = username.trim().toLowerCase();
+    try {
+      const mockResponse = await axios.post(`${API_URL}/auth/login`, { username: normalizedUsername, password });
+      if (mockResponse.data.mode === 'mock') {
+        const profile = mockResponse.data.user;
+        return { user: new User(profile), token: mockResponse.data.token };
+      }
+    } catch (error) {
+      if (error.response?.status !== 404) throw error;
+    }
+
+    // Map username to the Firebase virtual email when Admin is configured.
+    const virtualEmail = `${normalizedUsername}@murointeractivo.local`;
     const userCredential = await signInWithEmailAndPassword(auth, virtualEmail, password);
     const token = await userCredential.user.getIdToken();
 

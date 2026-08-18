@@ -62,6 +62,34 @@ export class AuthController {
     }
   };
 
+  login = async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required.' });
+    }
+
+    try {
+      firebaseAdminInstance.initialize();
+      if (!firebaseAdminInstance.isMocked) {
+        return res.status(404).json({ error: 'Mock login is disabled.' });
+      }
+
+      const normalizedUsername = username.trim().toLowerCase();
+      const virtualEmail = `${normalizedUsername}@murointeractivo.local`;
+      const authUser = await firebaseAdminInstance.auth.signIn(virtualEmail, password);
+      const profile = await this.userRepository.findByUid(authUser.uid);
+      if (!profile) return res.status(404).json({ error: 'User profile not found.' });
+
+      return res.status(200).json({
+        mode: 'mock',
+        token: authUser.token,
+        user: { uid: profile.uid, username: profile.username, name: profile.name, lastname: profile.lastname }
+      });
+    } catch (error) {
+      return res.status(401).json({ error: error.message || 'Invalid credentials.' });
+    }
+  };
+
   getProfile = async (req, res) => {
     try {
       const user = await this.userRepository.findByUid(req.user.uid);
