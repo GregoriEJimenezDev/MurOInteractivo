@@ -4,11 +4,11 @@
  * to swap between the real Firebase service and a Mock service.
  */
 export class IAuthService {
-  async register(username, password, name, lastname) {
+  async register(email, password, name, lastname, username) {
     throw new Error('Method register() not implemented');
   }
 
-  async login(username, password) {
+  async login(email, password) {
     throw new Error('Method login() not implemented');
   }
 
@@ -18,6 +18,18 @@ export class IAuthService {
 
   async getCurrentUser() {
     throw new Error('Method getCurrentUser() not implemented');
+  }
+
+  async updateUserProfile(userId, data) {
+    throw new Error('Method updateUserProfile() not implemented');
+  }
+
+  async sendVerificationEmail(user) {
+    throw new Error('Method sendVerificationEmail() not implemented');
+  }
+
+  async checkEmailVerified() {
+    throw new Error('Method checkEmailVerified() not implemented');
   }
 
   onAuthStateChanged(callback) {

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel.js';
-import MainLayout from './components/MainLayout.jsx';
+import Navbar from './components/Navbar.jsx';
 import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
-import Help from './pages/Help.jsx';
+import VerifyEmail from './pages/VerifyEmail.jsx';
+import ProfileSettings from './pages/ProfileSettings.jsx';
 
 /**
  * Main App Component (View).
@@ -12,8 +13,14 @@ import Help from './pages/Help.jsx';
  * page rendering based on routing state, and binding to authentication VM.
  */
 export default function App() {
-  const { user, token, loading, logout, login, register } = useAuthViewModel();
+  const { user, loading, logout, updateLocalUser } = useAuthViewModel();
   const [currentPage, setCurrentPage] = useState('home');
+  const [pageParams, setPageParams] = useState({});
+
+  const navigate = (page, params = {}) => {
+    setCurrentPage(page);
+    setPageParams(params);
+  };
 
   if (loading) {
     return (
@@ -27,26 +34,44 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <Home user={user} token={token} onNavigate={setCurrentPage} />;
+        return <Home user={user} onNavigate={navigate} />;
       case 'login':
-        return <Login login={login} onNavigate={setCurrentPage} />;
+        return <Login onNavigate={navigate} />;
       case 'register':
-        return <Register register={register} onNavigate={setCurrentPage} />;
-      case 'help':
-        return <Help onNavigate={setCurrentPage} />;
+        return <Register onNavigate={navigate} />;
+      case 'verify-email':
+        return <VerifyEmail email={pageParams.email} onNavigate={navigate} />;
+      case 'profile':
+        return (
+          <ProfileSettings
+            user={user}
+            onNavigate={navigate}
+            onUserUpdated={updateLocalUser}
+          />
+        );
       default:
-        return <Home user={user} token={token} onNavigate={setCurrentPage} />;
+        return <Home user={user} onNavigate={navigate} />;
     }
   };
 
   return (
-    <MainLayout
+    <div className="app-container">
+      <Navbar 
         user={user} 
         logout={logout} 
         currentPage={currentPage} 
-        onNavigate={setCurrentPage} 
-      >
+        onNavigate={navigate}
+      />
+      
+      <main className="main-layout">
         {renderPage()}
-    </MainLayout>
+      </main>
+
+      <footer className="main-footer">
+        <div className="container text-center">
+          <p>© 2026 Muro Interactivo. Construido con Clean Architecture, SOLID y React Hooks.</p>
+        </div>
+      </footer>
+    </div>
   );
 }

@@ -1,76 +1,68 @@
 import { IAuthService } from '../../domain/services/IAuthService.js';
-import { auth } from '../../config/firebase.js';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'firebase/auth';
-import axios from 'axios';
+import { auth, db } from '../../config/firebase.js';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  onAuthStateChanged
+} from 'firebase/auth';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { User } from '../../domain/entities/User.js';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-const userFromFirebase = (firebaseUser, username) => {
-  const [name = 'Usuario', ...lastName] = (firebaseUser.displayName || '').split(' ').filter(Boolean);
-  return new User({
-    uid: firebaseUser.uid,
-    username: username || firebaseUser.email?.split('@')[0] || '',
-    name,
-    lastname: lastName.join(' ')
-  });
-};
-
 /**
- * Concrete implementation of AuthService using Firebase Client SDK and Backend API.
- * SOLID Principle: SRP - Strictly focuses on communication with Firebase Auth Client.
+ * Concrete implementation of AuthService using the Firebase Client SDK.
+ * User profiles live in the Firestore "users" collection, keyed by the Auth uid.
+ * SOLID Principle: SRP - Strictly focuses on Firebase Auth and Firestore profile reads.
  */
 export class FirebaseAuthService extends IAuthService {
-  async register(username, password, name, lastname) {
-    const normalizedUsername = username.trim().toLowerCase();
-    try {
-      const response = await axios.post(`${API_URL}/auth/register`, {
-        username: normalizedUsername,
-        password,
+  async register(email, password, name, lastname, username) {
+    if (!auth || !db) {
+      throw new Error('Firebase Authentication is not configured.');
+    }
+
+    // Step 1: Create the account in Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+    // Step 2: Send email verification
+    await sendEmailVerification(userCredential.user);
+
+    // Step 3: Persist the profile in Firestore using the generated uid
+    await setDoc(doc(db, 'users', userCredential.user.uid), {
+      name,
+      lastname,
+      username,
+      emailVerified: false,
+      createdAt: serverTimestamp()
+    });
+
+    return {
+      user: new User({
+        uid: userCredential.user.uid,
+        email: userCredential.user.email,
+        username,
         name,
         lastname
-      });
-      return response.data;
-    } catch (error) {
-      if (error.response && error.response.status < 500) throw error;
-      if (!auth) throw error;
-
-      const virtualEmail = `${normalizedUsername}@murointeractivo.local`;
-      const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, password);
-      await updateProfile(userCredential.user, { displayName: `${name} ${lastname}` });
-      return { user: userFromFirebase(userCredential.user, normalizedUsername), mode: 'firebase-only' };
-    }
+      }),
+      emailVerified: userCredential.user.emailVerified
+    };
   }
 
-  async login(username, password) {
+  async login(email, password) {
     if (!auth) {
       throw new Error('Firebase Authentication is not configured.');
     }
 
-    const normalizedUsername = username.trim().toLowerCase();
-    try {
-      const mockResponse = await axios.post(`${API_URL}/auth/login`, { username: normalizedUsername, password });
-      if (mockResponse.data.mode === 'mock') {
-        const profile = mockResponse.data.user;
-        return { user: new User(profile), token: mockResponse.data.token };
-      }
-    } catch (error) {
-      if (error.response?.status && error.response.status !== 404 && error.response.status < 500) throw error;
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+    // Check if email is verified
+    if (!userCredential.user.emailVerified) {
+      await signOut(auth);
+      throw new Error('Debes verificar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.');
     }
 
-    // Map username to the Firebase virtual email when Admin is configured.
-    const virtualEmail = `${normalizedUsername}@murointeractivo.local`;
-    const userCredential = await signInWithEmailAndPassword(auth, virtualEmail, password);
     const token = await userCredential.user.getIdToken();
-
-    // Load full profile details from MongoDB using Firebase ID token
-    let user;
-    try {
-      const profileResponse = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      user = new User({ uid: userCredential.user.uid, username: profileResponse.data.username, name: profileResponse.data.name, lastname: profileResponse.data.lastname });
-    } catch {
-      user = userFromFirebase(userCredential.user, normalizedUsername);
-    }
+    const user = await this._buildUserFromAuth(userCredential.user);
 
     return { user, token };
   }
@@ -80,20 +72,49 @@ export class FirebaseAuthService extends IAuthService {
     await signOut(auth);
   }
 
+  async sendVerificationEmail() {
+    if (!auth || !auth.currentUser) {
+      throw new Error('No hay un usuario autenticado para enviar el correo de verificación.');
+    }
+    await sendEmailVerification(auth.currentUser);
+  }
+
+  async checkEmailVerified() {
+    if (!auth || !auth.currentUser) return false;
+    // Reload user to get latest emailVerified status
+    await auth.currentUser.reload();
+    return auth.currentUser.emailVerified;
+  }
+
   async getCurrentUser() {
     if (!auth || !auth.currentUser) return null;
-    
-    const firebaseUser = auth.currentUser;
-    const token = await firebaseUser.getIdToken();
-    const profileResponse = await axios.get(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    return this._buildUserFromAuth(auth.currentUser);
+  }
 
-    return new User({
-      uid: firebaseUser.uid,
-      username: profileResponse.data.username,
-      name: profileResponse.data.name,
-      lastname: profileResponse.data.lastname
+  /**
+   * Persists profile changes (avatarId and/or bio) into the Firestore
+   * "users" document of the given uid. Only whitelisted fields are written.
+   */
+  async updateUserProfile(userId, data) {
+    if (!db) {
+      throw new Error('Firebase Authentication is not configured.');
+    }
+    if (!userId) {
+      throw new Error('A user id is required to update the profile.');
+    }
+
+    // Whitelist: only editable profile fields are allowed through.
+    const profileData = {};
+    if (data?.avatarId !== undefined) profileData.avatarId = data.avatarId;
+    if (data?.bio !== undefined) profileData.bio = data.bio;
+
+    if (Object.keys(profileData).length === 0) {
+      throw new Error('No valid profile fields were provided.');
+    }
+
+    await updateDoc(doc(db, 'users', userId), {
+      ...profileData,
+      updatedAt: serverTimestamp()
     });
   }
 
@@ -105,24 +126,60 @@ export class FirebaseAuthService extends IAuthService {
     }
 
     return onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const token = await firebaseUser.getIdToken();
-          let user;
-          try {
-            const profileResponse = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-            user = new User({ uid: firebaseUser.uid, username: profileResponse.data.username, name: profileResponse.data.name, lastname: profileResponse.data.lastname });
-          } catch {
-            user = userFromFirebase(firebaseUser);
-          }
-          callback(user, token);
-        } catch (error) {
-          console.error("Firebase auth state sync error:", error.message);
-          callback(null, null);
-        }
-      } else {
+      if (!firebaseUser) {
         callback(null, null);
+        return;
       }
+
+      try {
+        const token = await firebaseUser.getIdToken();
+        const user = await this._buildUserFromAuth(firebaseUser);
+        callback(user, token);
+      } catch (error) {
+        console.error('Auth state sync error:', error.message);
+        // Degraded session: emit auth-only data so the user is not kicked out
+        callback(this._buildFallbackUser(firebaseUser), null);
+      }
+    });
+  }
+
+  /**
+   * Combines Firebase Auth data (uid, email) with the Firestore profile
+   * (name, lastname, username) into a single unified User entity.
+   */
+  async _buildUserFromAuth(firebaseUser) {
+    const profile = await this._fetchUserProfile(firebaseUser.uid);
+
+    // Precaution: the Auth account exists but the Firestore document is missing
+    if (!profile) {
+      console.warn(`No Firestore profile found for uid "${firebaseUser.uid}". Using fallback data.`);
+      return this._buildFallbackUser(firebaseUser);
+    }
+
+    return new User({
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      username: profile.username,
+      name: profile.name,
+      lastname: profile.lastname,
+      avatarId: profile.avatarId ?? null,
+      bio: profile.bio ?? ''
+    });
+  }
+
+  async _fetchUserProfile(uid) {
+    if (!db) return null;
+    const snapshot = await getDoc(doc(db, 'users', uid));
+    return snapshot.exists() ? snapshot.data() : null;
+  }
+
+  _buildFallbackUser(firebaseUser) {
+    return new User({
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      username: firebaseUser.email?.split('@')[0] || 'usuario',
+      name: '',
+      lastname: ''
     });
   }
 }

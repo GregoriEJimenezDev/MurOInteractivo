@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { authService } from '../config/services.js';
+import { User } from '../domain/entities/User.js';
 
 /**
  * Authentication ViewModel.
@@ -28,11 +29,11 @@ export function useAuthViewModel() {
     };
   }, []);
 
-  const login = async (username, password) => {
+  const login = async (email, password) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await authService.login(username, password);
+      const result = await authService.login(email, password);
       setUser(result.user);
       setToken(result.token);
       return result.user;
@@ -44,11 +45,11 @@ export function useAuthViewModel() {
     }
   };
 
-  const register = async (username, password, name, lastname) => {
+  const register = async (email, password, name, lastname, username) => {
     setLoading(true);
     setError(null);
     try {
-      await authService.register(username, password, name, lastname);
+      await authService.register(email, password, name, lastname, username);
     } catch (err) {
       setError(err.message || 'Registration failed.');
       throw err;
@@ -71,6 +72,17 @@ export function useAuthViewModel() {
     }
   };
 
+  /**
+   * Merges locally-edited profile fields (avatarId, bio, ...) into the active
+   * session user, so every subscribed View reflects the change instantly
+   * without waiting for a full auth state refresh.
+   */
+  const updateLocalUser = (updatedFields) => {
+    setUser((prevUser) =>
+      prevUser ? new User({ ...prevUser, ...updatedFields }) : prevUser
+    );
+  };
+
   return {
     user,
     token,
@@ -79,6 +91,7 @@ export function useAuthViewModel() {
     login,
     register,
     logout,
+    updateLocalUser,
     isAuthenticated: !!user
   };
 }

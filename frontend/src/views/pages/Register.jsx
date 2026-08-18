@@ -1,75 +1,34 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import React from 'react';
+import { useRegisterViewModel } from '../../viewmodels/useRegisterViewModel.js';
 
 /**
  * Register Page Component (View).
- * SOLID Principle: SRP - Strictly handles rendering the user registration form and state validation.
+ * Design Pattern: MVVM - Pure View. All form state, validation and the Firebase
+ * sign-up flow live in useRegisterViewModel; this component only renders
+ * the UI and handles navigation feedback.
  */
-export default function Register({ register, onNavigate }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
-  const [lastname, setLastname] = useState('');
-  const [localError, setLocalError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+export default function Register({ onNavigate }) {
+  const { formData, handleChange, isLoading, error, registerUser } = useRegisterViewModel();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLocalError('');
-    setSuccessMsg('');
-    setLoading(true);
 
-    if (!username.trim() || !password.trim() || !name.trim() || !lastname.trim()) {
-      setLocalError('Todos los campos son obligatorios.');
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setLocalError('La contraseña debe tener al menos 6 caracteres.');
-      setLoading(false);
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setLocalError('Las contraseñas ingresadas no coinciden.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      await register(username, password, name, lastname);
-      setSuccessMsg('¡Usuario registrado con éxito! Redirigiendo al inicio de sesión...');
-      
-      // Delay redirection slightly so the user sees the success prompt
-      setTimeout(() => {
-        onNavigate('login');
-      }, 2000);
-    } catch (err) {
-      setLocalError(err.message || 'Ocurrió un error al procesar el registro.');
-      setLoading(false);
+    const result = await registerUser();
+    if (result) {
+      // result is the email string - redirect to verify email page
+      onNavigate('verify-email', { email: result });
     }
   };
 
   return (
     <div className="page auth-page">
       <div className="auth-card glass-card">
-        <button type="button" onClick={() => onNavigate('home')} className="mb-5 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus:ring-4 focus:ring-blue-50"><ArrowLeft size={16} /> Volver</button>
         <h2 className="auth-title text-center">Registrarse</h2>
         <p className="auth-subtitle text-center">Crea tu cuenta de Muro Interactivo</p>
 
-        {localError && (
-          <div className="form-alert error">
-            <span>⚠️</span> {localError}
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="form-alert success">
-            <span>✅</span> {successMsg}
+        {error && (
+          <div className="form-alert error" role="alert">
+            <span>⚠️</span> {error}
           </div>
         )}
 
@@ -80,11 +39,13 @@ export default function Register({ register, onNavigate }) {
               <input
                 type="text"
                 id="reg-name"
+                name="name"
                 className="form-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={formData.name}
+                onChange={handleChange}
                 placeholder="Juan"
-                disabled={loading}
+                disabled={isLoading}
+                autoComplete="given-name"
               />
             </div>
 
@@ -93,11 +54,13 @@ export default function Register({ register, onNavigate }) {
               <input
                 type="text"
                 id="reg-lastname"
+                name="lastname"
                 className="form-input"
-                value={lastname}
-                onChange={(e) => setLastname(e.target.value)}
+                value={formData.lastname}
+                onChange={handleChange}
                 placeholder="Pérez"
-                disabled={loading}
+                disabled={isLoading}
+                autoComplete="family-name"
               />
             </div>
           </div>
@@ -107,28 +70,44 @@ export default function Register({ register, onNavigate }) {
             <input
               type="text"
               id="reg-username"
+              name="username"
               className="form-input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={formData.username}
+              onChange={handleChange}
               placeholder="Ej: juan_perez"
-              disabled={loading}
+              disabled={isLoading}
               autoComplete="username"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="reg-email">Correo Electrónico</label>
+            <input
+              type="email"
+              id="reg-email"
+              name="email"
+              className="form-input"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Ej: juan@correo.com"
+              disabled={isLoading}
+              autoComplete="email"
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="reg-password">Contraseña</label>
             <input
-                type={showPassword ? 'text' : 'password'}
+              type="password"
               id="reg-password"
+              name="password"
               className="form-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={formData.password}
+              onChange={handleChange}
               placeholder="Debe tener mínimo 6 caracteres"
-              disabled={loading}
+              disabled={isLoading}
               autoComplete="new-password"
             />
-            <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="-mt-12 mr-3 self-end rounded-md p-1 text-gray-400 hover:text-gray-700 focus:outline-none focus:ring-4 focus:ring-blue-50" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
 
           <div className="form-group">
@@ -136,21 +115,22 @@ export default function Register({ register, onNavigate }) {
             <input
               type="password"
               id="reg-confirm"
+              name="confirmPassword"
               className="form-input"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              value={formData.confirmPassword}
+              onChange={handleChange}
               placeholder="Repite tu contraseña"
-              disabled={loading}
+              disabled={isLoading}
               autoComplete="new-password"
             />
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary btn-block btn-pulse" 
-            disabled={loading}
+          <button
+            type="submit"
+            className="btn btn-primary btn-block btn-pulse"
+            disabled={isLoading}
           >
-            {loading ? 'Creando cuenta...' : 'Crear Cuenta'}
+            {isLoading ? 'Cargando...' : 'Crear Cuenta'}
           </button>
         </form>
 
